@@ -8,20 +8,40 @@ import torchvision.transforms as transforms
 from model import Gan3DposeNet
 from utils.model_utils import init_weights, heuristic_loss
 from transformation import *
+from dataset import MPii2DPoseDataset
 
 
-transform = transforms.Compose([
-        Normalize(),
-        ToTensor()
-    ])
+def create_dataset(mode='train', **kwargs):
+
+    err = (
+        f"Expected value 'train' or 'valid' for the parameter mode,"
+        f"got {mode} instead"
+    )
+    assert mode in ['train', 'valid'], err
+
+    transform = transforms.Compose([
+            Normalize(),
+            ToTensor()
+        ])
+
+    if mode == 'train':
+        json_file = kwargs.train_json_file
+    else:
+        json_file = kwargs.valid_json_file
+
+
+    data = MPii2DPoseDataset(json_file=kwargs.json_file,
+                             transform=transform)
+    return data
+
+
+def build_loaders(data, **kwargs):
+    loader = torch.utils.data.DataLoader(data,
+                                         batch_size=kwargs.batch_size)
+    return loader
 
 
 
-
-
-#LOAD DATA + PREPROCESS
-#...
-#...
 
 def set_model(device, **kwargs):
 
@@ -81,8 +101,12 @@ def train(train_loader,
             output_dis_real = discriminator(xy_real) #1
             output_dis_fake = discriminator(xy_projected) #0
 
-            accuracy_real = np.sum(output_dis_real / np.ones(output_dis_real.shape)) / 2
-            accuracy_fake = np.sum(output_dis_fake / np.zeros(output_dis_fake.shape)) / 2
+            accuracy_real = np.sum(
+                output_dis_real / np.ones(output_dis_real.shape)) / 2
+
+            accuracy_fake = np.sum(
+                output_dis_fake / np.zeros(output_dis_fake.shape)) / 2
+
             accuracy_dis = (accuracy_real + accuracy_fake) / 2
 
             # Compute generator loss
@@ -131,11 +155,19 @@ if __name__ == '__main__':
         'betas': (0.5, 0.999),
         'weight_decay': 1e-5,
         'heuristic_loss_weight': 1.0,
-        'model_path': 'saved_models'
+        'model_path_gen': 'saved_models/Gen.pt',
+        'model_path_dis': 'saved_models/Dis.pt',
+        'train_json_file': 'data/train.json',
+        'valid_json_file': 'data/valid.json'
     })
 
-    #LOAD DATA 
-    # PREPROCESS DATA
+    train_set = create_dataset(mode='train', **params)
+    valid_set = create_dataset(mode='train', **params)
+
+    train_loader = build_loaders(train_set, **kwargs)
+    valid_loader = build_loaders(valid_set, **kwargs)
+    
+    #visualize data in batches
 
     generator, discriminator, gen_optimizer, dis_optimizer = set_model(device,
                                                                        **params)
@@ -145,8 +177,8 @@ if __name__ == '__main__':
           gen_optimizer, dis_optimizer, device, **params)
     print("Training done.")
 
-    torch.save(generator.state_dict(), model_path+'/Gen.pt')
-    torch.save(discriminator.state_dict(), model_path+'/Dis.pt')
+    torch.save(generator.state_dict(), model_path_gen)
+    torch.save(discriminator.state_dict(), model_path_dis)
     print("\nModels Saved.")
         
 
